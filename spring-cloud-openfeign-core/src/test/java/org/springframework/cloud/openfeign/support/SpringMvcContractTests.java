@@ -761,6 +761,53 @@ class SpringMvcContractTests {
 	}
 
 	@Test
+	void testRequestHeaderWithSameNameAsPathVariableDoesNotOverridePathVariable() {
+		AtomicReference<Request> request = new AtomicReference<>();
+		Client client = (req, options) -> {
+			request.set(req);
+			return Response.builder().status(200).request(req).body(new byte[0]).build();
+		};
+
+		Feign.builder()
+			.contract(contract)
+			.client(client)
+			.target(TestTemplate_RequestHeaderAndPathVariableSameName.class, "http://localhost")
+			.test(1, "A");
+
+		assertThat(request.get().url()).isEqualTo("http://localhost/test/1");
+		assertThat(request.get().headers().get("id")).containsExactly("A");
+	}
+
+	@Test
+	void testRequestHeaderDeclaredBeforePathVariableWithSameNameDoesNotOverridePathVariable() {
+		Request request = captureRequest(api -> api.headerFirst("A", 1));
+
+		assertThat(request.url()).isEqualTo("http://localhost/test/1");
+		assertThat(request.headers().get("id")).containsExactly("A");
+	}
+
+	@Test
+	void testRequestHeaderWithSameNameAsRequestParamDoesNotOverrideRequestParam() {
+		Request request = captureRequest(api -> api.queryAndHeader(1, "A"));
+
+		assertThat(request.url()).isEqualTo("http://localhost/test?id=1");
+		assertThat(request.headers().get("id")).containsExactly("A");
+	}
+
+	private Request captureRequest(Consumer<TestTemplate_RequestHeaderAndPathVariableSameName> call) {
+		AtomicReference<Request> request = new AtomicReference<>();
+		Client client = (req, options) -> {
+			request.set(req);
+			return Response.builder().status(200).request(req).body(new byte[0]).build();
+		};
+		call.accept(Feign.builder()
+			.contract(contract)
+			.client(client)
+			.target(TestTemplate_RequestHeaderAndPathVariableSameName.class, "http://localhost"));
+		return request.get();
+	}
+
+	@Test
 	void testProcessAnnotations_Fallback() throws Exception {
 		Method method = TestTemplate_Advanced.class.getDeclaredMethod("getTestFallback", String.class, String.class,
 				Integer.class);
@@ -1214,6 +1261,19 @@ class SpringMvcContractTests {
 
 		@PostMapping("/test")
 		String notInTemplate(@PathVariable("id") String id);
+
+	}
+
+	public interface TestTemplate_RequestHeaderAndPathVariableSameName {
+
+		@GetMapping("/test/{id}")
+		String test(@PathVariable("id") Integer id, @RequestHeader("id") String headerId);
+
+		@GetMapping("/test/{id}")
+		String headerFirst(@RequestHeader("id") String headerId, @PathVariable("id") Integer id);
+
+		@GetMapping("/test")
+		String queryAndHeader(@RequestParam("id") Integer id, @RequestHeader("id") String headerId);
 
 	}
 

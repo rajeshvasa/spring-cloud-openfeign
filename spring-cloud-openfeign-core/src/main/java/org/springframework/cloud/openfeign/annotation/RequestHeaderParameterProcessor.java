@@ -61,11 +61,39 @@ public class RequestHeaderParameterProcessor implements AnnotatedParameterProces
 
 		String name = ANNOTATION.cast(annotation).value();
 		checkState(emptyToNull(name) != null, "RequestHeader.value() was empty on parameter %s", parameterIndex);
-		context.setParameterName(name);
+		String templateName = uniqueTemplateName(name, data);
+		context.setParameterName(templateName);
 
-		Collection<String> header = context.setTemplateParameter(name, data.template().headers().get(name));
+		Collection<String> header = context.setTemplateParameter(templateName, data.template().headers().get(name));
 		data.template().header(name, header);
 		return true;
+	}
+
+	/**
+	 * Feign resolves template variables by name across the URL and the headers, so a
+	 * header that shares its name with a path or query variable would also be expanded
+	 * into the URL. Such a header gets a template variable name of its own.
+	 */
+	private static String uniqueTemplateName(String name, MethodMetadata data) {
+		String templateName = name;
+		int suffix = 0;
+		while (isUsedElsewhere(templateName, data)) {
+			templateName = name + "_header" + (suffix == 0 ? "" : suffix);
+			suffix++;
+		}
+		return templateName;
+	}
+
+	private static boolean isUsedElsewhere(String templateName, MethodMetadata data) {
+		if (data.template().url().contains("{" + templateName + "}")) {
+			return true;
+		}
+		for (Collection<String> names : data.indexToName().values()) {
+			if (names.contains(templateName)) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 }
